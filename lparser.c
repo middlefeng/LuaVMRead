@@ -1,5 +1,13 @@
 
 
+General Rules
+--------------------------------------------------------------
+Arraies are usually stored in continuous memory block. The block is pre-allocated
+and grow on-the-fly by doubling its size. The actually used item number is of name
+"n...", the allocated memory size is of name "size...", both in terms of the number
+of items (not in bytes).
+
+
 
 LClosure
 -----------------------------        ----------------- ----------------
@@ -73,6 +81,11 @@ static int singlevaraux (FuncState *fs, TString *n, expdesc *var, int base)
 base:	indicating if this is the local-level (as 1) or upper-level (as 0).
 		if a var is found at an upper-level, mark BlockCnt.upval.
 		BlockCnt.upval makes leaveblock() inserts a JMP to close upvals.
+
+		along the path from a FuncState where an upvalue is found (call level n)
+		to the current "fs", call level 0, a new item is added to FunState::f->upvalues
+		from level n-1 to 0. 
+
 return:	VVOID if the name "n" is not found. A global var.
 		VLOCAL if found at the current level. Only meaningful when "base" is 0.
 			When "base" is greater than 0, the found var is marked as "used-as-
@@ -82,8 +95,17 @@ return:	VVOID if the name "n" is not found. A global var.
 
 
 
+static int searchupvalue (FuncState *fs, TString *name)
+==========================================================================
+Return the index of "fs->upvalues" of the upvalue, which has the given name "name".
+Return -1 if no upvalue of the name found.
+
+
+
 static int searchvar (FuncState *fs, TString *n)
 ==========================================================================
+Search a local var with the given name "n" within the given function-level
+"fs". Return the "reg" index the local var residing.
 
 
 
@@ -94,6 +116,19 @@ return information of the var: name, start/end pc of valid region
 i:		"reg" number of the local var
 fs:		represent the current function level
 
+
+
+static int newupvalue (FuncState *fs, TString *name, expdesc *v)
+==========================================================================
+Add a new slot into "fs->upvalues".
+Note: "v->k" should be either
+		1. VLOCAL, meaning an upvalue at the immediate outter block, or
+		2. VUPVAL, meaning an upvalue at the indirectly outter block, for
+		   which a slot is added to "fs->upvalues" for each "fs" along the
+		   nesting-path.
+Note: used only in two places:
+		1. when create a chunk, creating the "_ENV".
+		2. in singlevaraux().
 
 
 
