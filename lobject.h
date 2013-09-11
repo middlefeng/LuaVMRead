@@ -55,12 +55,25 @@ UpVal
 
 Proto
 -----------------
-sizecode:		size of "code"
-sizelineinfo:	size of "lineinfo"
 
-is_vararg:	It has mere two possible values now, 0 or 1.
-upvalues:	This array is for the _description_ of upvalues. For example, if an upval
-			shall be on the stack (locals of enclosing function).
+-------------------------------------------------
+	GCObject*	next			|
+	lu_byte		tt				|	Common header
+	lu_byte		marked			|
+-------------------------------------------------
+	...							|
+--------------------------------------------------------------------------------------------------
+	LocVar*		locvars			|	TString* varname	|	debug and parsing information for local-var,
+								|	int 	 startpc	|   used for var-seach in parsing. indexed by 
+								|	int 	 endpc		|	"Dyndata::actvar.arr".
+--------------------------------------------------------------------------------------------------
+	...							|
+	int 		sizecode		|	size of "code"
+	int 		sizelineinfo	|	size of "lineinfo"
+	...							|
+	lu_byte		is_vararg		|	it has mere two possible values now, 0 or 1.
+	lu_byte		upvalues		|	for the _description_ of upvalues. For example, if an upval shall be
+								|	on the stack (locals of enclosing function).
 
 
 

@@ -30,14 +30,31 @@ FuncState
 |  BlockCnt*	bl			|		chain of nesting blocks
 |  int 			pc 			|		count of "f->code" and "f->lineinfo".
 |  ...						|
+|  int 			nk			|		number of already-used slot in "f->k".
+|  ...						|
 |  int 			firstlocal	|		first local index in "dyd".
-|  short		nlocvars	|		number of local vars (current-level)
-|  lu_byte		nactvar		|		number of currently active local vars (all-levels)
+|  short		nlocvars	|		number of all local vars within the current function, used items in "f->locvars".
+----------------------------------------------------------
+|  lu_byte		nactvar		|		number of currently active local vars, "nactvar <= nlocalvars" because some blocks
+|							|		already exited. its maximal value is the number of regs allocated to the current function
+----------------------------------------------------------
 |  lu_byte		nups		|		number of currently parsed up-values
 |  ...						|
 -----------------------------
 
 
+
+Dyndata
+-----------------------------
+|  Vardesc*		arr			|		array of (short index)s, indices to Proto::locvars
+|							|		this array itself is indexed by "reg" number. note that items in Proto::locvars	might
+|							|		reuse the same "reg" numbers as this array grows and shrinks
+|  int 			n 			|
+|  int 			size		|
+-----------------------------
+|  Labellist* 	gt 			|
+|  Labellist* 	label		|
+-----------------------------
 
 
 
@@ -55,7 +72,13 @@ static int singlevaraux (FuncState *fs, TString *n, expdesc *var, int base)
 ==========================================================================
 base:	indicating if this is the local-level (as 1) or upper-level (as 0).
 		if a var is found at an upper-level, mark BlockCnt.upval.
-		BlockCnt.upval makes leaveblock() inserts a JMP to close upvals. 
+		BlockCnt.upval makes leaveblock() inserts a JMP to close upvals.
+return:	VVOID if the name "n" is not found. A global var.
+		VLOCAL if found at the current level. Only meaningful when "base" is 0.
+			When "base" is greater than 0, the found var is marked as "used-as-
+			upval", and the return value is ignored by the lower level (inner-
+			nested) searching.
+		VUPVAL if found at the upper level.
 
 
 
@@ -66,7 +89,29 @@ static int searchvar (FuncState *fs, TString *n)
 
 static LocVar *getlocvar (FuncState *fs, int i)
 ==========================================================================
+return information of the var: name, start/end pc of valid region
 
+i:		"reg" number of the local var
+fs:		represent the current function level
+
+
+
+
+static void codestring (LexState *ls, expdesc *e, TString *s)
+==========================================================================
+Add a string constant "s" to "ls->fs->f->k".
+Set the index to "e->u.info", the value to "e->k".
+
+e:	out parameter, set as a constant with content of "s".
+s:	the content of the new string constant.
+
+
+
+
+static TString *str_checkname (LexState *ls)
+==========================================================================
+Assure the current token is a NAME. Return the string of the NAME and advance
+the Lexer state, for one token.
 
 
 
@@ -317,6 +362,10 @@ exprstat			=>		suffixedexp (assignment)?
 
 assignment			=>		"," suffixedexp assignment			|
 							"=" explist
+
+		Note:	"suffixedexp" involved in "assignment", including the one in the precending
+				"exprstat" must all be "NAME". This is checked in "assignment()" when a "="
+				is encountered.
 
 
 explist				=>		expr ("," expr)*

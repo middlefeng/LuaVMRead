@@ -29,6 +29,11 @@ Add "v" to field "k" of the "struct Proto".
 Before really creating an entry in "k", it check and reuse an eixsting one whenever possible.
 It check by search in "fs->h", which is a compile-time hash-index of "k".
 
+fs->f->k grows by double if there is no enough room, and all new items are set as "nil".
+The number of actually used slots is stored in fs->nk.
+
+Returns the location in "f->k" of the newly-added constant.
+
 
 
 static int luaK_code (FuncState *fs, Instruction i)
@@ -234,6 +239,6 @@ Test mode includes:
 
 
 
-
+assignment
 
 
