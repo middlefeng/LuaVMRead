@@ -6,6 +6,12 @@ General
 - if a "luaK_..." function accepts an "expdesc" as parameter, it usually does not put
   instruction into Proto::code, at least not putting the last instruction.
 
+- A "test-mode" instruction is followed by a JMP instruction. When generating
+  a comp-instruction, luaK_posfix() generates it as "jmp-if-true" (the same as
+  "go-if-false").
+
+  in "goiftrue()", the "test-bit" shall be inverted to invert the "jmp-if-true" behavior.
+
 
 
 Global Tables

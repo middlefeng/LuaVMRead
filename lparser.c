@@ -37,6 +37,8 @@ FuncState
 |  LexState*	ls			|
 |  BlockCnt*	bl			|		chain of nesting blocks
 |  int 			pc 			|		count of "f->code" and "f->lineinfo".
+|  int 			lasttarget	|
+|  int 			jpc			|		list of JMP instructions pending to the next "pc"
 |  ...						|
 |  int 			nk			|		number of already-used slot in "f->k".
 |  ...						|
@@ -44,7 +46,8 @@ FuncState
 |  short		nlocvars	|		number of all local vars within the current function, used items in "f->locvars".
 ----------------------------------------------------------
 |  lu_byte		nactvar		|		number of currently active local vars, "nactvar <= nlocalvars" because some blocks
-|							|		already exited. its maximal value is the number of regs allocated to the current function
+|							|		already exited. its maximal value is the number of regs allocated to the current
+|							|		function with a name. note some statments allocate temp "var" without name
 ----------------------------------------------------------
 |  lu_byte		nups		|		number of currently parsed up-values
 |  ...						|
