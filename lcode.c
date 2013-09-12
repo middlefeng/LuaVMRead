@@ -3,6 +3,8 @@
 General
 -------------------------------------------------------
 - luaK_code... returns the "pc" of the instruction just being generated.
+- if a "luaK_..." function accepts an "expdesc" as parameter, it usually does not put
+  instruction into Proto::code, at least not putting the last instruction.
 
 
 

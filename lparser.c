@@ -75,6 +75,51 @@ expdesc
 -----------------------------
 
 
+static int explist (LexState *ls, expdesc *v)
+==========================================================================
+Generate code as follows:
+Put comma-separated expression into adajcent "reg"s, except for the last one.
+
+Note: The general rule is functions other than "lua_K..." does not generate
+	  code into Proto::code. This method handles more than one expressions but
+	  accepts and resues single "v", so it generates actual code to Proto::code
+	  and only leaves the code for the last expression in the list "open".
+
+
+
+static void assignment (LexState *ls, struct LHS_assign *lh, int nvars)
+==========================================================================
+An invocation to "assignment()" handles a suffixing portion of an "assignment-stat",
+which is a type of "exprstat" (although this is not a type defined in syntax).
+
+For example:
+a, b, c, d, e = f, g, h, i
+
+Then an assignment could be one of the follows:
+- , b, c, d, e = f, g, h, i
+- , c, d, e = f, g, h, i
+- , d, e = f, g, h, i
+- , e = f, g, h, i
+- = f, g, h, i
+
+But not the follows:
+- a, b, c, d, e = f, g, h, i 		// this is a whole "exprstat"
+- f, g, h, i 						// this is the tailing "explist", must contain the "="
+
+For a multi-assignment, "assignment()" recursively invokes as many level as the
+number of left-hand vars.
+
+
+
+static void singlevar (LexState *ls, expdesc *var)
+==========================================================================
+Initialize "var" for a single NAME. The resulted "var" content is:
+	1. VLOCAL.
+	2. VUPVAL, or
+	3. VINDEXED, for a global var.
+
+
+
 
 static int singlevaraux (FuncState *fs, TString *n, expdesc *var, int base)
 ==========================================================================
@@ -362,7 +407,7 @@ static void exprstat (LexState *ls)											// through LHS_assign
 mainfunc			=>		statlist
 
 
-statlis				=>		(statement)*
+statlist			=>		(statement)*
 
 
 statement			=>		";"									|
@@ -379,11 +424,26 @@ statement			=>		";"									|
 							exprstat
 
 
-ifstat				=>		(test_then_block)+ ["else" block]
+ifstat				=>		(test_then_block)+ ["else" block] "end"
 
 
 test_then_block		=>		("if" | "elseif") expr "then"
 							(gotostat | statlist)
+
+
+whilestat			=>		"while" expr "do" block "end"
+
+
+forstat				=>		"for" NAME (fornum | forlist) "end"
+
+
+fornum				=> 		"=" expr "," expr ("," expr)? forbody
+
+
+forlist				=>		("," NAME)+ "in" explist forbody
+
+
+forbody				=>		"do" block
 
 
 gotostat			=>		"goto" label  |  "break"
@@ -392,11 +452,22 @@ gotostat			=>		"goto" label  |  "break"
 funcstat			=>		funcname body
 
 
+block 				=>		statlist
+
+		Note:	"block"s are "statlist"s which must be surrounded by "begin"/"end" pair.
+				"block"'s sematic is repsonsible for storing block-level of the internal
+				parser state.
+
+
 exprstat			=>		suffixedexp (assignment)?
 
 
 assignment			=>		"," suffixedexp assignment			|
 							"=" explist
+
+		Note:	"assignment" by its own is not a completed statement. it should always be a
+				part of a "exprstat". An "exprstat" becomes an "assignment-stat" when its sufixing
+				part is "assignment".
 
 		Note:	"suffixedexp" involved in "assignment", including the one in the precending
 				"exprstat" must all be "NAME". This is checked in "assignment()" when a "="
@@ -418,7 +489,13 @@ simpleexp			=>		NUMBER  |  STRING  |  NIL  |  TRUE  |  FASLE  |  DOTS  |
 							suffixedexp
 
 
-suffixedexp			=>		primaryexp (fieldsel | yindex | (":" NAME funcargs) | funcargs)
+suffixedexp			=>		primaryexp (fieldsel | yindex | (":" NAME funcargs) | funcargs)?
+
+		Note:	A "suffixed" expr consists of a "primaryexp" and optionally its suffixed part.
+
+		Note:	Function invocations are always "suffixedexp". The call instruction is generated
+				from within "funcargs" according to the "expdesc" filled by the "primaryexp" (and
+				"suffixedexp" if it is an object-oriented method).
 
 
 primaryexp			=>		"(" expr ")" | NAME
