@@ -1,19 +1,40 @@
 
 
 
-
+General Process
+--------------------------------------------------------------------------------
 1. All objects are created white.
-2. A reachable object is marked as black, and added to the gray list.
-3. If all referred object of a black object is marked black, the black object is
-   removed out of the gray list.
+2. A reachable object is marked as black, and added to the gray list because its
+   refered objects might still remain white (or gray if they in turn have refered
+   objects).
+3. If all directly and indirectly referred object of a black object is marked black,
+   the black object is removed out of the gray list.
 4. A black object is not necessarily a reachable object, because it might be
    obsoleted after it is marked.
-5. A current-white object is not necessarily unreachable, because it might not be
-   makred yet. But a current-white object MUST be unreachable at "atomic" step
-   because at that point all reachable and some unreachable objects have all been
-   marked.
-6. At "atomic" step, all current-white objects are added to the sweep lists, and
+5. A current-white object is not necessarily unreachable unless GC is in "atomic"
+   step.
+6. A current-white object MUST be unreachable at "atomic" step because at that 
+   point all reachable and some just-becoming-unreachable objects have all been marked.
+7. At "atomic" step, all current-white objects are added to the sweep lists, and
    then they become other-white because the while flag is flipped.
+
+
+
+
+
+Barriers
+--------------------------------------------------------------------------------
+A barriers is set when a object is added to another object as the latter's refered
+object.
+
+If the "refering" object is a table, then a backward barrier is usually set, making
+the table back to the gray-list.
+
+Otherwise, a forward barrier is set, mark the refered object as "black" (but possibly
+in the gray-list) in order to avoid putting the refering object into gray-list (but
+it might be already there).
+
+
 
 
 
