@@ -52,6 +52,24 @@ UpVal
 
 
 
+Table
+-----------------
+
+-------------------------------------------------
+	GCObject*	next			|
+	lu_byte		tt				|	Common header
+	lu_byte		marked			|
+-------------------------------------------------
+	lu_byte		flags			|	Presence of meta-method. "1" means absent. All "1" at initialized.
+	lu_byte		lsizenode		|	Log(sizenode), so there is no "sizenode" field
+	...							|
+	Node*		node 			|	Hashed key-value
+	...							|
+
+
+
+
+
 
 Proto
 -----------------

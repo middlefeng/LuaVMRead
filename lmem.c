@@ -4,6 +4,7 @@
 void *luaM_realloc_ (lua_State *L, void *block, size_t osize, size_t nsize)
 --------------------------------------------------------------------------------------------
 Augment L->l_G->frealloc with GC.
+It increases L->l_G->GCdebt by (nsize - osize).
 
 
 
