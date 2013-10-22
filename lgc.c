@@ -16,7 +16,9 @@ General Process
 6. A current-white object MUST be unreachable at "atomic" step because at that 
    point all reachable and some just-becoming-unreachable objects have all been marked.
 7. At "atomic" step, all current-white objects are added to the sweep lists, and
-   then they become other-white because the while flag is flipped.
+   then they become other-white because the while flag is flipped. After "atomic" step,
+   all "other-white" objects are guranteed to be unreachable until the next "pause"
+   step.
 
 
 
@@ -79,6 +81,10 @@ isdeadm(ow,m)
 ================================================================================
 Ture if "m" has "other_than_current_white" marked.
 
+
+linktable(h,p)
+================================================================================
+Link table "h" on to list "p". The *next* pointer is h->gclist.
 
 
 static GCObject *udata2finalize (global_State *g)
