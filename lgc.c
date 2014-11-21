@@ -82,28 +82,47 @@ isdeadm(ow,m)
 Ture if "m" has "other_than_current_white" marked.
 
 
-linktable(h,p)
+linkgclist(o,p)
 ================================================================================
-Link table "h" on to list "p". The *next* pointer is h->gclist.
+Link object "o" on to list "p". The *next* pointer is h->gclist.
+This was named linktable in 5.2.
 
 
 static GCObject *udata2finalize (global_State *g)
 ================================================================================
 Move the head of "g->tobefnz" to "g->allgc".
-Clear its "SEPARATED" bit.
+Clear its "FINALIZEDBIT" bit. Then return that object (previous head of g->tobefnz).
+
+Immediately after this function, the "__gc" of the returned object must be invoked
+by invoking GCTM().
+
+Before this function called, markbeingfnz() is called to mark all objects as black
+or gray (and added to the gray-list). Then this function adding them to g->allgc
+makes the object subject to normal GC rules (normally reclaimed, but could be
+resurrected within "__gc").
 
 
-
-static void separatetobefnz (lua_State *L, int all)
+static void separatetobefnz (global_State *g, int all)
 ================================================================================
-Move un-reached or all objects in L->l_G->finobj to L->l_G->tobefnz.
+Move un-reached ("all" is 0) or all ("all" is 1) objects in g->finobj to g->tobefnz.
+"all" is set to 1 only at the time that a lua_State is closed.
+
+
+static GCObject **sweeplist (lua_State *L, GCObject **p, lu_mem count)
+================================================================================
+Reclaim the dead object in "*p". Mark still alive objects as "current-white".
+
+If "*p" is allgc, then the alive objects wait for the next marking phase.
+If "*p" is finobj, they will be moved to tobefnz by separatetobefnz() later.
+If "*p" is tobefnz, they will be moved to allgc after "__gc" called by udata2finalize().
 
 
 
 static GCObject **sweeplist (lua_State *L, GCObject **p, lu_mem count)
 ================================================================================
 sweeplist (L, p, count)
-	otherwhite(L->l_G)
+	otherwhite(L->l_G)			// ==> ow
+	luaC_white(L->l_G)			// ==> white
 	[iterate over lisp "p"]
 		isdeadm(ow, (*p)->marked)
 		[true]
@@ -140,17 +159,23 @@ static void reallymarkobject (global_State *g, GCObject *o)
 
 
 
-
-
-void luaC_fullgc (lua_State *L, int isemergency) 
+static void separatetobefnz (global_State *g, int all)
 ================================================================================
-luaC_fullgc(L, isemergency)
-	callallpendingfinalizers(L, 1)
-		resetoldbit(L->l_G->tobefnz)			       // remove old
+separatetobefnz(g, 0)
+	findlast(&g->tobefnz)		// ==> lastnext
+	[loop over g->finobj: curr]
+		iswhite(curr)
+			[move curr from g->finobj to the tail of g->tobefnz]
+
+
+static void callallpendingfinalizers (lua_State *L, int propagateerrors)
+================================================================================
+callallpendingfinalizers(L, 1)
+	[loop on "L->l_G->tobefnz"]
 		GCTM(L, 1)
 			udata2finalize(L->l_G)
-				resetbit(gch(o)->marked, SEPARATED)
-				keepinvariantout(L->l_G)
+				resetbit(gch(o)->marked, FINALIZEDBIT)
+				issweepphase(L->L_G)
 					[makewhite(L->l_G, o)]
 			setgcovalue(L, &v, L->l_G->allgc)
 			luaT_gettmbyobj(L, &v, TM_GC)		       // ==> tm
@@ -161,9 +186,18 @@ luaC_fullgc(L, isemergency)
 						luaD_call(L, L->top - 2, 0, 0)
 							luaD_precall(L, L->top - 2, 0)
 							[luaV_execute(L)]	      // only for Lua-function
-	entersweep(L)
-		sweeptolive(L, &L->l_G->finobj, &n)
-		sweeptolive(L, &L->l_G->allgc, &n)
+
+
+
+
+void luaC_fullgc (lua_State *L, int isemergency) 
+================================================================================
+luaC_fullgc(L, isemergency)
+	keepinvariant(L->l_G)
+		[entersweep(L)]
+			sweeptolive(L, &L->l_G->allgc, &n)
+				[loop on L->l_G->allgc]
+					sweeplist(L, &L->l_G->allgc, &n)
 	luaC_runtilstate(L, bitmask(GCSpause))
 
 
@@ -181,6 +215,15 @@ markvalue(g,o)
 			iscollectable(o)
 			iswhite(gcvalue(o))
 
+
+traversethread(global_State *g, lua_State *th)
+================================================================================
+traversethread(g, th)
+	[loop from th->stack to th->top: o]
+		markobject(o)
+	[in atomic step]
+		[loop from th->top+1 to th->stack+th->stacksize]
+			setnilvalue(o)
 
 
 Steps
