@@ -62,6 +62,14 @@ Other-white			Unreachable (never used). __gc has been invoked on it.
 
 
 
+GCObject *luaC_newobj (lua_State *L, int tt, size_t sz)
+================================================================================
+This function is simplified from what it was in 5.2. In 5.2, there was a "list" parameter which was
+used for only UpVal (which then was a GCObject). UpVal in 5.2, although was GCObject, were not linked
+to g->allgc, but instead g->uvhead.
+
+
+
 bitmask(b)
 ================================================================================
 Create a mask in which the "b"th bit is "1".

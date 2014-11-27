@@ -1,10 +1,22 @@
 
+
+
+Value vs. GCObject vs. GCUnion
+---------------------
+Values (or TValue, more strictly speaking) are what is associated with Lua variables.
+TValues reside in stack. Values represent UpVals. TValues act as table fields.
+
+GCObjects reside only in the heap. They are referred by Values.
+GCUnion represents all subclasses of GCObject.
+
+
+
 StkId --> TValue -->  lua_TValue  --> (contains) TValuefields
 
 
 TValuefields
 -----------------
-Value is not tagged (with type). TValue means "tagged" value, value augmented
+Value is untagged (having no type information). TValue means "tagged" value, value augmented
 with type tag (tt_).
 -----------------
 value	(Value)     ---> (union)  	gc	(GCObject)
