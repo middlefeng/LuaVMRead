@@ -3,9 +3,11 @@
 General Rules
 --------------------------------------------------------------
 Arraies are usually stored in continuous memory block. The block is pre-allocated
-and grow on-the-fly by doubling its size. The actually used item number is of name
-"n...", the allocated memory size is of name "size...", both in terms of the number
-of items (not in bytes).
+and grow on-the-fly by doubling its size.
+	- The actually used item number is of name "n...". For Proto::code, the actually
+	  generated code instruction number is FuncState::pc.
+	- the allocated memory size is of name "size...",
+	- both in terms of the number of items (not in bytes).
 
 
 
@@ -277,8 +279,18 @@ Expressions Apperaing In (Only):
 
 Expression Type
 ------------------------------------------
+VNIL		|	Instuction has not been emitted.
+VTRUE		|
+VFALSE		|
+VK 			|
+VKFLT 		|
+VKINT 		|
 VRELOCABLE:		The target register (usually R(A)) is not yet determined (set as 0).
 				The instruction is already put into Proto.
+				e->u.info stores the location of the instruction.
+VNONRELOC:		The instruction has been emitted to FuncState::f->code.
+				e->u.info stores the register storing the result value. The instruction is
+				complete and must not be modified (hence the type NONRELOC).
 VVARARG:		The target reg could be ether determined or not:
 					1. If determined, it is a multi-value which is NOT adjusted.
 					2. If undetermined, it will be either:
@@ -287,7 +299,8 @@ VVARARG:		The target reg could be ether determined or not:
 							 to VRELOCABLE.
 VCALL:			The reg location of the returned value is already determined by OP_CALL,
 				and will be transfer into  "VNONRELOC" with no further post-fixing.
-VINDEXED:		The instruction is NOT in Proto.
+VINDEXED:		The instruction of evaluate the table and the key have already been in Proto.
+				The instruction of evaluate the value is NOT in Proto.
 
 
 
@@ -296,6 +309,11 @@ Methods Modifying "e->k"
 1. The "..exp2.." functions make sure an expression is set in a register, with VNONRELOC as result.
 2. The "..discharge.." functions processes only some types of expression, leaving others handled by
    other "..discharge.." or "..exp2.." functions.
+3. The functions with prefix "luaK_" are interfacing with the parser.
+4. The functions with prefix "luaK_" do not specify which reg the value should be put. They use
+   "2anyreg" or "2nextreg", or "2value" (meaing either to reg, or have a constant result).
+5. The functions with "2reg" do not have "luaK_" prefix.
+==========================================================================
 
 	void luaK_exp2nextreg (FuncState *fs, expdesc *e)
 	---------------------------------------------------
@@ -323,7 +341,8 @@ Methods Modifying "e->k"
 	* VFALSE		=>		VNONRELOC
 	* VTRUE			=>		VNONRELOC
 	* VK 			=>		VNONRELOC
-	* VKNUM			=>		VNONRELOC
+	* VKFLT			=>		VNONRELOC
+	* VKINT			=>		VNONRELOC
 	* VRELOCABLE	=>		VNONRELOC
 	* VNONRELOC		=>		VNONRELOC	|	insert an "OP_MOVE".
 	* (luaK_dischargevars)
@@ -354,6 +373,61 @@ Methods Modifying "e->k"
 	*				=>		VNONRELOC
 
 
+Expression Evaluation Dependencies
+==========================================================================
+
+	luaK_exp2RK				=>		luaK_exp2val  (luaK_exp2anyreg)?
+
+	luaK_exp2val			=>		luaK_exp2anyreg		|
+									luaK_dischargevars
+
+	luaK_exp2anyreg			=>		luaK_dischargevars  (exp2reg | luaK_exp2nextreg)?
+
+	luaK_exp2nextreg		=>		luaK_dischargevars  exp2reg
+
+	luaK_dischargevars		=>		luaK_setoneret
+
+	exp2reg 				=> 		discharge2reg
+
+	discharge2reg			=>		luaK_dischargevars
+
+
+
+
+static void discharge2reg (FuncState *fs, expdesc *e, int reg)
+==========================================================================
+------------------------------------------------------------------------------------------------
+VUPVAL			| 	OP_GETUPVAL reg, e->u.info, 0			|	R(reg) := UpValue[e->u.info]
+------------------------------------------------------------------------------------------------
+VINDEXED		|	OP_GETTABUP 0, e->u.ind.t, e->u.ind.ind |
+------------------------------------------------------------------------------------------------
+VNIL			|	OP_LOADNIL reg, 1 						|	R(reg) := nil
+VFALSE			|	OP_LOADBOOL reg, 0						|	R(reg) := FALSE
+VTRUE			|	OP_LOADBOOL reg, 1						|	R(reg) := TRUE
+VK (normal)		|	OP_LOADK reg, e->u.info 				|	R(reg) := e->u.info
+------------------------------------------------------------------------------------------------
+VK (ex_large)	|	OP_LOADKX reg, 0 						|	R(reg) := e->u.info
+				|	OP_EXTRAARG, e->u.info 					|
+------------------------------------------------------------------------------------------------
+VRELOCABLE		|	(no new instruction)					|
+	
+
+	discharge2reg(fs, e, reg)				// e->k == VUPVAL
+		luaK_dischargevars(fs, e)
+			luaK_codeABC(fs, OP_GETUPVAL, 0, e->u.info, 0)
+			e->k <== VRELOCABLE
+		getcode(fs, e)						// ==> pc
+		SETARG_A(*pc, reg)
+
+	discharge2reg(fs, e, reg)				// e->k == VINDEXED
+		luaK_dischargevars(fs, e)
+			freereg(fs, e->u.ind.idx)
+
+
+	discharge2reg(fs, e, reg)				// e->k == VRELOCABLE
+		getcode(fs, e)						// ==> pc
+		SETARG_A(*pc, reg)
+	
 
 
 Methods Creating "expdesc"

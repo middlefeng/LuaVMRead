@@ -46,7 +46,9 @@ Returns the location in "f->k" of the newly-added constant.
 
 static int luaK_code (FuncState *fs, Instruction i)
 ==========================================================================
-Put Instruction "i" into "fs->f->code"
+Put Instruction "i" into "fs->f->code".
+Put the line number into "fs->f->lineinfo".
+Increase fs->pc. Note "pc" is not part of fs->f (Proto) but of f (FuncState).
 
 
 

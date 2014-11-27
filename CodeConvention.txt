@@ -16,3 +16,4 @@ LuaS	String-related API
 LuaT	Meta-table-related API
 
 LuaL	Util
+luaG	Debug
