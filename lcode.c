@@ -6,11 +6,18 @@ General
 - if a "luaK_..." function accepts an "expdesc" as parameter, it usually does not put
   instruction into Proto::code, at least not putting the last instruction.
 
-- A "test-mode" instruction is followed by a JMP instruction. When generating
-  a comp-instruction, luaK_posfix() generates it as "jmp-if-true" (the same as
-  "go-if-false").
-
-  in "goiftrue()", the "test-bit" shall be inverted to invert the "jmp-if-true" behavior.
+- A "test-mode" instruction means one of the following three:
+	- OP_EQ,
+	- OP_LT,
+	- OP_LE，
+	- OP_TEST,
+	- OP_TESTSET.
+- A "test-mode" instruction is followed by a JMP instruction.
+- The first three, OP_EQ, OP_LT, OP_LE, is used for generating a comp-instruction, 
+  luaK_posfix() ==> codecomp() generates it as "jmp-if-true" (the same as "go-if-false").
+  That means the "true-block"/"then-block" is located last.
+- In "goiftrue()", the "test-bit" shall be inverted to invert the "jmp-if-true" behavior
+  in order to have the "then-block" located first (so if-then, if-else-then must use goifture()).
 
 
 
@@ -109,16 +116,33 @@ Return the instruction's "pc".
 
 static void luaK_concat (FuncState *fs, int *l1, int l2)
 ==========================================================================
-Add instruction at index "l2" to a chain of jump instructions.
+Add instruction at index "l2" to a chain of jump instructions, which is called a patch-list.
 -------------------------------------------------------
-l1:		address to a variable holding a "pc" index.
+l1:		header to a patch-list (i.e. a sequence of unpatched JMP instructions, more strictly speaking,
+		the "pc" indices of those instructions). NO_JUMP means the list is empty.
 l2:		a "pc" index.
 -------------------------------------------------------
 1. Noop, when l2 == NO_JUMP.
-2. *l1 = l2, when l1 == NO_JUMP.
-3. if "*l1" has a non-"NO_JUMP" value, trace the value to the instruction
-   chain (a chain of jump instructions) and set "l2" as the target of the
-   end instruction.
+2. *l1 = l2, when l1 == NO_JUMP. Mean to initialize the list.
+3. if "*l1" has a non-"NO_JUMP" value, trace to the end of the patch-list and set "l2" as the target of
+   the tail instruction, meaning add l2 to the end of the patch-list.
+
+
+
+void luaK_patchtohere (FuncState *fs, int list)
+==========================================================================
+The function is used to patch a list of JMPs (i.e. a patch-list) to the location of the next instruction.
+
+It stores the "list" to fs->jpc. When Lua compiler generate the next instruction, the fs->jpc will be
+cleared to NO_JUMP, and the "list" will be:
+	1. Patched to the location of next instruction if it is not a JMP, or
+	2. Be augmented with the newly-generated JMP instruction, and the list will be usually put back to
+	   fs->jpc later on, or be handled differently in some cases.
+
+Effectively the same to:
+luaK_concat(fs, &fs->jpc, list)
+
+With a minor side-effect that modifying "fs->lasttarget".
 
 
 
@@ -156,6 +180,10 @@ For e->k == VJMP and NOT following a "TESTSET"
 
 For anything else, just delegate to discharge2reg().
 
+For e->k == VJMP
+----------------------------------------------------------
+exp2reg (fs, e, reg)
+
 
 
 
@@ -186,12 +214,17 @@ patchlistaux(fs, fs->jpc, fs->pc, NO_REG, fs->pc)
 
 static void patchlistaux (FuncState *fs, int list, int vtarget, int reg, int dtarget)
 ==========================================================================
-Traverse the chain of jump instructions pointed by "list" (til a "NO_JUMP" offset appear).
+Traverse the patch-list pointed by "list".
 	1. For all instructions which do NOT follow a "TESTSET", set their sBx to "dtarget".
 	2. For all which follow "TESTSET"s, set the "TESTSET"'s' "register A" to "reg" and their
 	   sBx to "vtarget".
+
 Note:
 	1. If "reg" is NO_REG, then "vtarget" should be the same to "dtarget".
+	2. "vtarget" means "value" target. It is used by a relation-expr whose value is not
+	   necessarily boolean, but could be any type. When the expr code jumps to "vtarget",
+	   "register A" is the value of the expr which is set by the "TESTSET" instruction.
+	3. Param "vtarget" and "reg" are used only in exp2reg().
 
 
 
@@ -208,6 +241,16 @@ The "TESTSET" would be either the one prior to "node", or the "node".
    "register B" as "register A". (For a TEST, "register B" is ignored.)
 
 
+
+static int need_value (FuncState *fs, int list)
+==========================================================================
+The name of the function means the patch-list specified by "list" does not set a value
+in a register by its own. Therefore it *needs* a value from somewhere else.
+
+Not setting a value means not all instructions are TESTSET in "list".
+
+This function is used by exp2reg() only. When an expr with JMP needs a value, exp2reg()
+will generate two LOADBOOL instructions to generate the final boolean value.
 
 
 
