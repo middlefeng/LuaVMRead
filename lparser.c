@@ -3,9 +3,11 @@
 General Rules
 --------------------------------------------------------------
 Arraies are usually stored in continuous memory block. The block is pre-allocated
-and grow on-the-fly by doubling its size. The actually used item number is of name
-"n...", the allocated memory size is of name "size...", both in terms of the number
-of items (not in bytes).
+and grow on-the-fly by doubling its size.
+	- The actually used item number is of name "n...". For Proto::code, the actually
+	  generated code instruction number is FuncState::pc.
+	- the allocated memory size is of name "size...",
+	- both in terms of the number of items (not in bytes).
 
 
 
@@ -74,7 +76,7 @@ expdesc
 |  expkind		k			|
 |  int			u.info		|
 |  int			t			|
-|  int			e			|
+|  int			f			|
 -----------------------------
 
 
@@ -277,8 +279,19 @@ Expressions Apperaing In (Only):
 
 Expression Type
 ------------------------------------------
+VNIL		|	Instuction has not been emitted.
+VTRUE		|
+VFALSE		|
+VK 			|
+VKFLT 		|
+VKINT 		|
+VJMP:			The expression is a comparison expression (i.e. EQ, LT, LE, NE, GE, GT).
 VRELOCABLE:		The target register (usually R(A)) is not yet determined (set as 0).
 				The instruction is already put into Proto.
+				e->u.info stores the location of the instruction.
+VNONRELOC:		The instruction has been emitted to FuncState::f->code.
+				e->u.info stores the register storing the result value. The instruction is
+				complete and must not be modified (hence the type NONRELOC).
 VVARARG:		The target reg could be ether determined or not:
 					1. If determined, it is a multi-value which is NOT adjusted.
 					2. If undetermined, it will be either:
@@ -287,15 +300,23 @@ VVARARG:		The target reg could be ether determined or not:
 							 to VRELOCABLE.
 VCALL:			The reg location of the returned value is already determined by OP_CALL,
 				and will be transfer into  "VNONRELOC" with no further post-fixing.
-VINDEXED:		The instruction is NOT in Proto.
+VINDEXED:		The instruction of evaluate the table and the key have already been in Proto.
+				The instruction of evaluate the value is NOT in Proto.
 
 
 
 Methods Modifying "e->k"
 ==========================================================================
 1. The "..exp2.." functions make sure an expression is set in a register, with VNONRELOC as result.
-2. The "..discharge.." functions processes only some types of expression, leaving others handled by
+2. The "..discharge.." functions process only some types of expression, leaving others handled by
    other "..discharge.." or "..exp2.." functions.
+4. No "..dischare.." function processes VJMP expressions. It's left to "..exp2.." functions.
+5. The functions with prefix "luaK_" are interfacing with the parser.
+6. The functions with prefix "luaK_" do not specify which reg the value should be put. They use
+   "2anyreg" or "2nextreg", or "2value" (meaing either to reg, or have a constant result).
+7. The functions with "2reg" do not have "luaK_" prefix because the register allocation is done
+   completely inside the code-generator.
+==========================================================================
 
 	void luaK_exp2nextreg (FuncState *fs, expdesc *e)
 	---------------------------------------------------
@@ -323,7 +344,8 @@ Methods Modifying "e->k"
 	* VFALSE		=>		VNONRELOC
 	* VTRUE			=>		VNONRELOC
 	* VK 			=>		VNONRELOC
-	* VKNUM			=>		VNONRELOC
+	* VKFLT			=>		VNONRELOC
+	* VKINT			=>		VNONRELOC
 	* VRELOCABLE	=>		VNONRELOC
 	* VNONRELOC		=>		VNONRELOC	|	insert an "OP_MOVE".
 	* (luaK_dischargevars)
@@ -338,8 +360,8 @@ Methods Modifying "e->k"
 
 	void luaK_setoneret (FuncState *fs, expdesc *e)
 	---------------------------------------------------
-	* VCALL			=>		VNONRELOC
-	* VVARARG		=>		VRELOCABLE
+	* VCALL			=>		VNONRELOC	|	e->u.info is the reg A of the OP_CALL.
+	* VVARARG		=>		VRELOCABLE	|	set reg B to 2 (meaning copying one value through OP_VARARG)
 
 	int luaK_exp2RK (FuncState *fs, expdesc *e)
 	---------------------------------------------------
@@ -354,6 +376,108 @@ Methods Modifying "e->k"
 	*				=>		VNONRELOC
 
 
+Expression Evaluation Dependencies
+==========================================================================
+
+	luaK_exp2RK				=>		luaK_exp2val  (luaK_exp2anyreg)?
+
+	luaK_exp2val			=>		luaK_exp2anyreg		|
+									luaK_dischargevars
+
+	luaK_exp2anyreg			=>		luaK_dischargevars  (exp2reg | luaK_exp2nextreg)?
+
+	luaK_exp2nextreg		=>		luaK_dischargevars  exp2reg
+
+	luaK_dischargevars		=>		luaK_setoneret
+
+	exp2reg 				=> 		discharge2reg
+
+	discharge2reg			=>		luaK_dischargevars
+
+
+static void freeexp (FuncState *fs, expdesc *e)
+==========================================================================
+"e" should be a non-relocatable expression whose register is the last allocated
+one.
+
+
+
+static void freereg (FuncState *fs, int reg)
+==========================================================================
+Register "reg" should be a constant, or a register outside the current block
+(less than fs->nactvar), or the last allocated register.
+
+For the first two cases, the function is no-op. For the second, it will release
+the register slot (by fs->freereg--).
+
+
+
+void luaK_dischargevars (FuncState *fs, expdesc *e)
+==========================================================================
+Change the "e" to either VNONRELOC or VRELOCABLE. (Exception, not handle VJMP.)
+
+
+
+void luaK_setoneret (FuncState *fs, expdesc *e)
+==========================================================================
+Invoked when the result of "e" is adjusted to only one value.
+"e" is a list, either the return value of a function (VCALL) or a VVARARG.
+	1. It calls getcode() to retrive the instruction.
+		- For e->k being VCALL, it should be a OP_CALL.
+		- For e->k being VVARARG, it should be a OP_VARARG.
+	2. For VCALL, set e->u.info as the reg A of the OP_CALL, and change type
+	   to VNONRELOC.
+	   For VVARARG, set reg B of OP_VARARG as 2 (meaing copying one value),
+	   leave reg A zero and set the type VRELOCABLE.
+
+
+
+static void discharge2reg (FuncState *fs, expdesc *e, int reg)
+==========================================================================
+Make sure the result of "e" get into register "reg". (Excpetion, not handle VJMP)
+
+If there is already some code generated in Proto::code (see the above section "Expression Type"),
+the "luaK_dischargevars()" will make sure the code is patched that only register "A" is left.
+
+Then this function handle one of the following cases:
+	1. If "e" is constant, the function emit constant-loading instruction:
+		OP_LOADNIL, OP_LOADBOOL, OP_LOADK/OP_LOADKX,
+		or add new item into Proto::k.
+	2. If "e" is VRELOCABLE, patch the reg "A" in the instruction as "reg".
+	3. If "e" is VNONRELOC, emit OP_MOVE to copy the value to reg "reg".
+
+------------------------------------------------------------------------------------------------
+VUPVAL			| 	OP_GETUPVAL reg, e->u.info, 0			|	R(reg) := UpValue[e->u.info]
+------------------------------------------------------------------------------------------------
+VINDEXED		|	OP_GETTABUP 0, e->u.ind.t, e->u.ind.ind |
+------------------------------------------------------------------------------------------------
+VNIL			|	OP_LOADNIL reg, 1 						|	R(reg) := nil
+VFALSE			|	OP_LOADBOOL reg, 0						|	R(reg) := FALSE
+VTRUE			|	OP_LOADBOOL reg, 1						|	R(reg) := TRUE
+VK (normal)		|	OP_LOADK reg, e->u.info 				|	R(reg) := e->u.info
+------------------------------------------------------------------------------------------------
+VK (ex_large)	|	OP_LOADKX reg, 0 						|	R(reg) := e->u.info
+				|	OP_EXTRAARG, e->u.info 					|
+------------------------------------------------------------------------------------------------
+VRELOCABLE		|	(no new instruction)					|
+	
+
+	discharge2reg(fs, e, reg)				// e->k == VUPVAL
+		luaK_dischargevars(fs, e)
+			luaK_codeABC(fs, OP_GETUPVAL, 0, e->u.info, 0)
+			e->k <== VRELOCABLE
+		getcode(fs, e)						// ==> pc
+		SETARG_A(*pc, reg)
+
+	discharge2reg(fs, e, reg)				// e->k == VINDEXED
+		luaK_dischargevars(fs, e)
+			freereg(fs, e->u.ind.idx)
+
+
+	discharge2reg(fs, e, reg)				// e->k == VRELOCABLE
+		getcode(fs, e)						// ==> pc
+		SETARG_A(*pc, reg)
+	
 
 
 Methods Creating "expdesc"

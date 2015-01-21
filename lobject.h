@@ -1,8 +1,23 @@
 
+
+
+Value vs. GCObject vs. GCUnion
+---------------------
+Values (or TValue, more strictly speaking) are what is associated with Lua variables.
+TValues reside in stack. Values represent UpVals. TValues act as table fields.
+
+GCObjects reside only in the heap. They are referred by Values.
+GCUnion represents all subclasses of GCObject.
+
+
+
 StkId --> TValue -->  lua_TValue  --> (contains) TValuefields
 
 
 TValuefields
+-----------------
+Value is untagged (having no type information). TValue means "tagged" value, value augmented
+with type tag (tt_).
 -----------------
 value	(Value)     ---> (union)  	gc	(GCObject)
 tt_		(int)						p	(void)
@@ -20,7 +35,7 @@ Assign *tt_* field as LUA_TNIL
 
 
 
-GCObject
+GCUnion
 -----------------
 "gclist" is the next node of the gray list if the object resides in one such list.
 
@@ -34,14 +49,16 @@ GCObject
 -------------------------------------------------
 
 
+TString
 -------------------------------------------------
 	GCObject*		next		|
 	lu_byte			tt			|	Common header
 	lu_byte			marked		|
 -------------------------------------------------
 	lu_byte			extra		|	
-	unsigned int	hash		|	tsv
+	unsigned int	hash		|	
 	size_t			len 		|
+	TString*		next		|
 -------------------------------------------------
 
 
@@ -51,16 +68,15 @@ GCObject
 
 UpVal
 -----------------
-
--------------------------------------------------------------------------------------
-	GCObject*			next				|	linked to "L->openupval"	|
-	lu_byte				tt					|								|	Common header
-	lu_byte				marked				|								|
+UpVal is no longer a GCObject like it was in 5.2.
+UpVal is no longer linked to g->uvhead, but only linked to L->openupval.
 -------------------------------------------------------------------------------------
 	TValue*				v					|	linked to either in-stack value or to "value"
+	lu_mem 				refcount			|
 -------------------------------------------------------------------------------------
-	TValue 		value 	|	UpVal*	prev	|
-						|	UpVal*	next	|	linked to "g->uphead"
+	TValue 		value 	|	UpVal*	next	|	linked to "L->openupval". In 5.2 it was to g->uvhead
+						|	int 	touched	|
+-------------------------------------------------------------------------------------
 
 
 
@@ -81,6 +97,22 @@ Table
 
 
 
+UData
+-----------------
+
+-------------------------------------------------
+	GCObject*	next			|
+	lu_byte		tt				|	Common header
+	lu_byte		marked			|
+-------------------------------------------------
+	lu_byte		ttuv_			|	New in 5.3
+	Table*		metatable		|
+	size_t		len 			|
+	Value 		user_			|	New in 5.3. Holding any Lua type. In 5.2, it was "env" which holds table type only.
+								|	Note: "env" in 5.2 does not really mean env. Just an ordinary table.
+-------------------------------------------------
+	...			(real data)
+-------------------------------------------------
 
 
 

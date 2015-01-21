@@ -35,10 +35,10 @@ size_elems	-	size in bytes of a single element
 
 luaM_growvector(L, v, nelems, size, t, limit, e)
 --------------------------------------------------------------------------------------------
-Try to double the size of v.
+Try to double the size of v if nelems + 1 > size.
 size	-	original and new size
 t		-	type of elements
-e		-	error message
+e		-	error message will be "too many [e] (limit is [limit])"
 
 
 luaM_growvector(L,
