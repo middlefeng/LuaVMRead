@@ -285,6 +285,7 @@ VFALSE		|
 VK 			|
 VKFLT 		|
 VKINT 		|
+VJMP:			The expression is a comparison expression (i.e. EQ, LT, LE, NE, GE, GT).
 VRELOCABLE:		The target register (usually R(A)) is not yet determined (set as 0).
 				The instruction is already put into Proto.
 				e->u.info stores the location of the instruction.
