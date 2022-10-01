@@ -3,7 +3,7 @@
 
 General Process
 --------------------------------------------------------------------------------
-1. All objects are created white.
+1. All objects are created as currentwhite.
 2. A reachable object is marked as black, and added to the gray list because its
    refered objects might still remain white (or gray if they in turn have refered
    objects).
@@ -59,6 +59,14 @@ Object Status
 Current-white		Unreached yet.
 Black				Currently used. Not neccessarily reachable.
 Other-white			Unreachable (never used). __gc has been invoked on it.
+------------------------------------------------------------------------------
+White
+----------------
+There are two kinds of white, current-white and other-white. They are flipped by
+a global flag "global_State::currentwhite".
+
+In many cases, an object is considered as "white" when it is in either type of white.
+While in other cases, it is treated differently depending on its current/other whiteness.
 
 
 
@@ -116,19 +124,22 @@ Move un-reached ("all" is 0) or all ("all" is 1) objects in g->finobj to g->tobe
 "all" is set to 1 only at the time that a lua_State is closed.
 
 
-static GCObject **sweeplist (lua_State *L, GCObject **p, lu_mem count)
+static GCObject **sweeplist (lua_State *L, GCObject **p, int countin, int *countout)
 ================================================================================
-Reclaim the dead object in "*p". Mark still alive objects as "current-white".
+Reclaim the dead object (marked as other-white) in "*p".
+Mark still alive objects (should be black) as "current-white".
 
 If "*p" is allgc, then the alive objects wait for the next marking phase.
 If "*p" is finobj, they will be moved to tobefnz by separatetobefnz() later.
 If "*p" is tobefnz, they will be moved to allgc after "__gc" called by udata2finalize().
 
+Since 5.4.0: countout is a new parameter.
 
 
-static GCObject **sweeplist (lua_State *L, GCObject **p, lu_mem count)
+
+static GCObject **sweeplist (lua_State *L, GCObject **p, int countin, int *countout)
 ================================================================================
-sweeplist (L, p, count)
+sweeplist (L, p, countin, countout)
 	otherwhite(L->l_G)			// ==> ow
 	luaC_white(L->l_G)			// ==> white
 	[iterate over lisp "p"]
@@ -200,13 +211,24 @@ callallpendingfinalizers(L, 1)
 
 void luaC_fullgc (lua_State *L, int isemergency) 
 ================================================================================
-luaC_fullgc(L, isemergency)
-	keepinvariant(L->l_G)
-		[entersweep(L)]
-			sweeptolive(L, &L->l_G->allgc, &n)
-				[loop on L->l_G->allgc]
-					sweeplist(L, &L->l_G->allgc, &n)
-	luaC_runtilstate(L, bitmask(GCSpause))
+
+	Incremental
+	-----------------------------
+	luaC_fullgc(L, isemergency)
+		fullinc(L, L->l_G)
+			keepinvariant(L->l_G)
+				[entersweep(L)]
+					sweeptolive(L, &L->l_G->allgc, &n)
+						[loop on L->l_G->allgc]
+							sweeplist(L, &L->l_G->allgc, &n)
+			luaC_runtilstate(L, bitmask(GCSpause))
+			...
+
+	Generational
+	-----------------------------
+	luaC_fullgc(L, isemergency)
+		fullgenc(L, L->l_G)
+			enterinc(L->l_G)
 
 
 
