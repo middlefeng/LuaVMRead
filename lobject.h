@@ -10,8 +10,10 @@ GCObjects reside only in the heap. They are referred by Values.
 GCUnion represents all subclasses of GCObject.
 
 
-
-StkId --> TValue -->  lua_TValue  --> (contains) TValuefields
+					    val
+StkId --> StackValue --------> TValue -->  TValuefields
+-----------------
+Since 5.4.0: StackValue* becomes StkId in replacement to TValue* in 5.3.x.
 
 
 TValuefields

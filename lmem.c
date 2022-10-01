@@ -20,6 +20,7 @@ e:	size of a single element. "n * e" pass to luaM_realloc_(...) as "nsize".
 luaM_reallocvector(L, v, oldn, n, t)
 --------------------------------------------------------------------------------------------
 Cast result to type "t" and use type "t" for element size.
+Change in 5.4.0, no longer assign the newly-allocated block to "v".
 
 
 
